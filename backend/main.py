@@ -4,7 +4,12 @@ from pydantic import BaseModel
 from typing import Dict, Any, Optional
 import uvicorn
 
+import uuid 
+import requests
+
 app = FastAPI(title="Weather Data System", version="1.0.0")
+
+# API access: deb398ebab87f808efa7ce30cf22ae34
 
 app.add_middleware(
     CORSMiddleware,
@@ -16,6 +21,7 @@ app.add_middleware(
 
 # In-memory storage for weather data
 weather_storage: Dict[str, Dict[str, Any]] = {}
+API_KEY = "deb398ebab87f808efa7ce30cf22ae34"
 
 class WeatherRequest(BaseModel):
     date: str
@@ -34,7 +40,34 @@ async def create_weather_request(request: WeatherRequest):
     3. Stores combined data with unique ID in memory
     4. Returns the ID to frontend
     """
-    pass
+
+    try:
+        res = requests.get(
+            "http://api.weatherstack.com/current",
+            params={
+                "access_key": API_KEY,
+                "query": request.location,
+                "units": "m"  # this is optional
+            },
+            timeout=5
+        )
+    except requests.exceptions.RequestException:
+        raise HTTPException(status_code=503, detail="Weather API unavailable")
+
+    if res.status_code != 200:
+        raise HTTPException(status_code=502, detail="Failed to fetch weather data")
+
+    data = res.json()
+
+    weather_id = str(uuid.uuid4())
+    weather_storage[weather_id] = {
+        "date": request.date,
+        "location": request.location,
+      "notes": request.notes,
+        "weather": data
+    }
+
+    return WeatherResponse(id=weather_id)
 
 @app.get("/weather/{weather_id}")
 async def get_weather_data(weather_id: str):
